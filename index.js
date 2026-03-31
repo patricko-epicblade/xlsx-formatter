@@ -47,31 +47,15 @@ app.post('/format', upload.single('file'), async (req, res) => {
     sheet.mergeCells(1, 1, 1, lastCol);
     sheet.mergeCells(2, 1, 2, lastCol);
 
-    // Row 1 / 2: left aligned, invisible text, white fill
-    [1, 2].forEach((rowNumber) => {
-      const row = sheet.getRow(rowNumber);
-      row.height = rowNumber === 1 ? 24 : 20;
+    // Row 1 / 2: keep visible, left aligned
+    sheet.getRow(1).height = 24;
+    sheet.getRow(2).height = 20;
 
-      for (let col = 1; col <= lastCol; col++) {
-        const cell = sheet.getCell(rowNumber, col);
-        cell.font = {
-          bold: rowNumber === 1,
-          italic: rowNumber === 2,
-          size: rowNumber === 1 ? 16 : 12,
-          color: { argb: 'FFFFFFFF' }, // invisible on white background
-        };
-        cell.alignment = {
-          horizontal: 'left',
-          vertical: 'middle',
-        };
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFFFFFF' },
-        };
-        cell.border = {};
-      }
-    });
+    sheet.getCell(1, 1).font = { bold: true, size: 16 };
+    sheet.getCell(1, 1).alignment = { horizontal: 'left', vertical: 'middle' };
+
+    sheet.getCell(2, 1).font = { italic: true, size: 12 };
+    sheet.getCell(2, 1).alignment = { horizontal: 'left', vertical: 'middle' };
 
     // Header styling
     const headerRow = sheet.getRow(headerRowIndex);
@@ -103,6 +87,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
       const isPartColumn = col === 1;
       const isTotalColumn = /TOTAL/i.test(headerText);
       const isDateColumn = /^\d{4}-\d{2}$/.test(headerText);
+      const isCompanyColumn = /^company$/i.test(headerText);
       const yearMatch = headerText.match(/^(\d{4})/);
       const year = yearMatch ? yearMatch[1] : null;
 
@@ -111,6 +96,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
         isPartColumn,
         isTotalColumn,
         isDateColumn,
+        isCompanyColumn,
         year,
       };
     }
@@ -123,6 +109,21 @@ app.post('/format', upload.single('file'), async (req, res) => {
       }
     }
     sheet.properties.outlineLevelCol = 1;
+
+    // Make Company header invisible: white text on white background
+    for (let col = 1; col <= lastCol; col++) {
+      const info = columnInfo[col];
+      if (info.isCompanyColumn) {
+        const headerCell = sheet.getCell(headerRowIndex, col);
+        headerCell.font = { ...(headerCell.font || {}), bold: true, color: { argb: 'FFFFFFFF' } };
+        headerCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' },
+        };
+        headerCell.border = {};
+      }
+    }
 
     // Table/body formatting
     for (let rowNumber = dataStartRow; rowNumber <= lastRow; rowNumber++) {
@@ -137,7 +138,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
         }
 
         // Default alignment
-        if (info.isPartColumn) {
+        if (info.isPartColumn || info.isCompanyColumn) {
           cell.alignment = { horizontal: 'left', vertical: 'middle' };
         } else if (typeof cell.value === 'number') {
           cell.alignment = { horizontal: 'right', vertical: 'middle' };
@@ -147,7 +148,18 @@ app.post('/format', upload.single('file'), async (req, res) => {
 
         // Column A bold
         if (info.isPartColumn) {
-          cell.font = { bold: true };
+          cell.font = { ...(cell.font || {}), bold: true };
+        }
+
+        // Company column body cells invisible: white text on white background
+        if (info.isCompanyColumn) {
+          cell.font = { ...(cell.font || {}), color: { argb: 'FFFFFFFF' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFFFFF' },
+          };
+          continue;
         }
 
         // TOTAL columns below header: light blue fill + bold text
@@ -155,7 +167,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
           cell.fill = {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: 'FFDDEBF7' }, // light blue
+            fgColor: { argb: 'FFDDEBF7' },
           };
           cell.font = { ...(cell.font || {}), bold: true };
         }
@@ -170,7 +182,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
           cell.fill = {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: 'FFE2F0D9' }, // light green
+            fgColor: { argb: 'FFE2F0D9' },
           };
         }
       }
@@ -181,20 +193,29 @@ app.post('/format', upload.single('file'), async (req, res) => {
       const info = columnInfo[col];
       const column = sheet.getColumn(col);
 
-      // Column A: wide enough so text stays inside column A
+      // Part column: wide enough so text stays inside column A
       if (info.isPartColumn) {
         let maxLength = 0;
         column.eachCell({ includeEmpty: true }, (cell) => {
           const text = cell.value == null ? '' : String(cell.value);
           maxLength = Math.max(maxLength, text.length);
         });
-
-        // ~250 px equivalent is roughly 35 Excel width units
         column.width = Math.max(35, maxLength + 2);
         continue;
       }
 
-      // TOTAL columns: fixed width to show full text (~117 px)
+      // Company column: keep it available but visually hidden
+      if (info.isCompanyColumn) {
+        let maxLength = 0;
+        column.eachCell({ includeEmpty: true }, (cell) => {
+          const text = cell.value == null ? '' : String(cell.value);
+          maxLength = Math.max(maxLength, text.length);
+        });
+        column.width = Math.max(18, Math.min(maxLength + 2, 30));
+        continue;
+      }
+
+      // TOTAL columns: fixed width to show full text
       if (info.isTotalColumn) {
         column.width = 17;
         continue;
