@@ -30,6 +30,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
     const reportStart = req.body.reportStart || '';
     const reportEnd = req.body.reportEnd || '';
 
+    // Insert top rows
     sheet.spliceRows(
       1,
       0,
@@ -37,20 +38,43 @@ app.post('/format', upload.single('file'), async (req, res) => {
       [`Period: ${reportStart} through ${reportEnd}`]
     );
 
+    const headerRowIndex = 3;
+    const dataStartRow = headerRowIndex + 1;
     const lastCol = Math.max(sheet.columnCount, 1);
+    const lastRow = sheet.rowCount;
 
+    // Merge title rows
     sheet.mergeCells(1, 1, 1, lastCol);
     sheet.mergeCells(2, 1, 2, lastCol);
 
-    sheet.getRow(1).font = { bold: true, size: 16 };
-    sheet.getRow(1).alignment = { horizontal: 'center' };
+    // Row 1 / 2: left aligned, invisible text, white fill
+    [1, 2].forEach((rowNumber) => {
+      const row = sheet.getRow(rowNumber);
+      row.height = rowNumber === 1 ? 24 : 20;
 
-    sheet.getRow(2).font = { italic: true };
-    sheet.getRow(2).alignment = { horizontal: 'center' };
+      for (let col = 1; col <= lastCol; col++) {
+        const cell = sheet.getCell(rowNumber, col);
+        cell.font = {
+          bold: rowNumber === 1,
+          italic: rowNumber === 2,
+          size: rowNumber === 1 ? 16 : 12,
+          color: { argb: 'FFFFFFFF' }, // invisible on white background
+        };
+        cell.alignment = {
+          horizontal: 'left',
+          vertical: 'middle',
+        };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' },
+        };
+        cell.border = {};
+      }
+    });
 
-    const headerRowIndex = 3;
+    // Header styling
     const headerRow = sheet.getRow(headerRowIndex);
-
     headerRow.font = { bold: true };
     headerRow.eachCell((cell) => {
       cell.fill = {
@@ -59,44 +83,139 @@ app.post('/format', upload.single('file'), async (req, res) => {
         fgColor: { argb: 'FFBFBFBF' },
       };
       cell.border = {
+        top: { style: 'thin' },
         bottom: { style: 'thin' },
       };
-      cell.alignment = { horizontal: 'center' };
+      cell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
     });
 
+    // Freeze top rows
     sheet.views = [{ state: 'frozen', ySplit: headerRowIndex }];
 
-    sheet.columns.forEach((col) => {
-      let maxLength = 10;
+    // Identify column types from headers
+    const columnInfo = [];
+    for (let col = 1; col <= lastCol; col++) {
+      const rawHeader = sheet.getCell(headerRowIndex, col).value;
+      const headerText = rawHeader == null ? '' : String(rawHeader).trim();
+      const isPartColumn = col === 1;
+      const isTotalColumn = /TOTAL/i.test(headerText);
+      const isDateColumn = /^\d{4}-\d{2}$/.test(headerText);
+      const yearMatch = headerText.match(/^(\d{4})/);
+      const year = yearMatch ? yearMatch[1] : null;
 
-      col.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
-        if (cell.value === 0) {
+      columnInfo[col] = {
+        headerText,
+        isPartColumn,
+        isTotalColumn,
+        isDateColumn,
+        year,
+      };
+    }
+
+    // Group date columns by year only (exclude TOTAL columns)
+    for (let col = 1; col <= lastCol; col++) {
+      const info = columnInfo[col];
+      if (info && info.isDateColumn) {
+        sheet.getColumn(col).outlineLevel = 1;
+      }
+    }
+    sheet.properties.outlineLevelCol = 1;
+
+    // Table/body formatting
+    for (let rowNumber = dataStartRow; rowNumber <= lastRow; rowNumber++) {
+      for (let col = 1; col <= lastCol; col++) {
+        const cell = sheet.getCell(rowNumber, col);
+        const info = columnInfo[col];
+        const value = cell.value;
+
+        // Replace numeric 0 with blank
+        if (value === 0) {
           cell.value = '';
         }
 
-        if (rowNumber > headerRowIndex && typeof cell.value === 'number') {
-          cell.alignment = { horizontal: 'right' };
+        // Default alignment
+        if (info.isPartColumn) {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        } else if (typeof cell.value === 'number') {
+          cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        } else {
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
         }
 
-        const value = cell.value == null ? '' : String(cell.value);
-        maxLength = Math.max(maxLength, value.length);
-      });
+        // Column A bold
+        if (info.isPartColumn) {
+          cell.font = { bold: true };
+        }
 
-      col.width = maxLength + 2;
-    });
+        // TOTAL columns below header: light blue fill + bold text
+        if (info.isTotalColumn) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFDDEBF7' }, // light blue
+          };
+          cell.font = { ...(cell.font || {}), bold: true };
+        }
 
-    const firstCol = sheet.getColumn(1);
-    firstCol.eachCell((cell, rowNumber) => {
-      if (rowNumber > headerRowIndex) {
-        cell.font = { bold: true };
+        // Non-TOTAL numeric data cells (excluding column A): light green fill
+        if (
+          !info.isPartColumn &&
+          !info.isTotalColumn &&
+          typeof cell.value === 'number' &&
+          cell.value !== 0
+        ) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE2F0D9' }, // light green
+          };
+        }
       }
-    });
+    }
 
+    // Column widths
+    for (let col = 1; col <= lastCol; col++) {
+      const info = columnInfo[col];
+      const column = sheet.getColumn(col);
+
+      // Column A: wide enough so text stays inside column A
+      if (info.isPartColumn) {
+        let maxLength = 0;
+        column.eachCell({ includeEmpty: true }, (cell) => {
+          const text = cell.value == null ? '' : String(cell.value);
+          maxLength = Math.max(maxLength, text.length);
+        });
+
+        // ~250 px equivalent is roughly 35 Excel width units
+        column.width = Math.max(35, maxLength + 2);
+        continue;
+      }
+
+      // TOTAL columns: fixed width to show full text (~117 px)
+      if (info.isTotalColumn) {
+        column.width = 17;
+        continue;
+      }
+
+      // All other columns: autosize
+      let maxLength = 10;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const text = cell.value == null ? '' : String(cell.value);
+        maxLength = Math.max(maxLength, text.length);
+      });
+      column.width = Math.min(Math.max(maxLength + 2, 10), 16);
+    }
+
+    // Auto filter on header row
     sheet.autoFilter = {
       from: { row: headerRowIndex, column: 1 },
-      to: { row: headerRowIndex, column: sheet.columnCount },
+      to: { row: headerRowIndex, column: lastCol },
     };
 
+    // Clean sheet name
     sheet.name = 'Usage Chart';
 
     const buffer = await workbook.xlsx.writeBuffer();
