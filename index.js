@@ -29,6 +29,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
     const companyName = req.body.companyName || 'Customer';
     const reportStart = req.body.reportStart || '';
     const reportEnd = req.body.reportEnd || '';
+    const outputFileName = req.body.outputFileName || 'report.xlsx';
 
     // Insert top rows
     sheet.spliceRows(
@@ -115,7 +116,11 @@ app.post('/format', upload.single('file'), async (req, res) => {
       const info = columnInfo[col];
       if (info.isCompanyColumn) {
         const headerCell = sheet.getCell(headerRowIndex, col);
-        headerCell.font = { ...(headerCell.font || {}), bold: true, color: { argb: 'FFFFFFFF' } };
+        headerCell.font = {
+          ...(headerCell.font || {}),
+          bold: true,
+          color: { argb: 'FFFFFFFF' },
+        };
         headerCell.fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -245,7 +250,13 @@ app.post('/format', upload.single('file'), async (req, res) => {
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-    res.send(buffer);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${outputFileName}"`
+    );
+    res.setHeader('Content-Length', buffer.length);
+
+    res.end(buffer);
   } catch (error) {
     console.error('Formatting error:', error);
     res.status(500).send(`Formatting error: ${error.message}`);
