@@ -89,6 +89,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
       const isTotalColumn = /TOTAL/i.test(headerText);
       const isDateColumn = /^\d{4}-\d{2}$/.test(headerText);
       const isCompanyColumn = /^company$/i.test(headerText);
+      const isDescriptionColumn = /^description$/i.test(headerText);
       const yearMatch = headerText.match(/^(\d{4})/);
       const year = yearMatch ? yearMatch[1] : null;
 
@@ -98,6 +99,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
         isTotalColumn,
         isDateColumn,
         isCompanyColumn,
+        isDescriptionColumn,
         year,
       };
     }
@@ -143,7 +145,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
         }
 
         // Default alignment
-        if (info.isPartColumn || info.isCompanyColumn) {
+        if (info.isPartColumn || info.isCompanyColumn || info.isDescriptionColumn) {
           cell.alignment = { horizontal: 'left', vertical: 'middle' };
         } else if (typeof cell.value === 'number') {
           cell.alignment = { horizontal: 'right', vertical: 'middle' };
@@ -206,6 +208,18 @@ app.post('/format', upload.single('file'), async (req, res) => {
           maxLength = Math.max(maxLength, text.length);
         });
         column.width = Math.max(35, maxLength + 2);
+        continue;
+      }
+
+      // Description column: left aligned, wide enough to read, capped
+      if (info.isDescriptionColumn) {
+        let maxLength = 0;
+        column.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
+          if (rowNumber < headerRowIndex) return; // skip merged title rows
+          const text = cell.value == null ? '' : String(cell.value);
+          maxLength = Math.max(maxLength, text.length);
+        });
+        column.width = Math.max(20, Math.min(maxLength + 2, 50));
         continue;
       }
 
