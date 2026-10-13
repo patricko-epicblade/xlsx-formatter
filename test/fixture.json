@@ -1,0 +1,40 @@
+{
+  "asOf": "2026-10-12",
+  "asOfLabel": "October 12, 2026",
+  "monthLabel": "Oct 2026",
+  "companyName": "Epic Blade & Industrial Solutions, LLC",
+  "overdueInvoiceCount": 4,
+  "customers": [
+    {
+      "customer": "Acme Corp",
+      "lines": [
+        { "type": "Invoice", "num": "62892", "date": "2026-08-05", "dueDate": "2026-10-07", "daysPastDue": 5, "openBalance": 1500.5, "poNumber": "1733", "terms": "Net 60", "lotNumber": "81928" },
+        { "type": "Invoice", "num": "62100", "date": "2026-06-01", "dueDate": "2026-08-28", "daysPastDue": 45, "openBalance": 2000, "poNumber": "1650", "terms": "Net 60", "lotNumber": "" },
+        { "type": "Credit Memo", "num": "CM-101", "date": "2026-09-15", "dueDate": "2026-09-15", "daysPastDue": null, "openBalance": -239.45, "poNumber": "", "terms": "", "lotNumber": "" }
+      ],
+      "overdueTotal": 3500.5, "creditTotal": -239.45, "netPastDue": 3261.05,
+      "statement": true, "note": null,
+      "statementFileName": "20261012_Acme_Corp_Statement.xlsx"
+    },
+    {
+      "customer": "Beta Industrial LTDA",
+      "lines": [
+        { "type": "Invoice", "num": "61000", "date": "2026-05-01", "dueDate": "2026-07-14", "daysPastDue": 90, "openBalance": 800, "poNumber": "", "terms": "", "lotNumber": "" }
+      ],
+      "overdueTotal": 800, "creditTotal": 0, "netPastDue": 800,
+      "statement": true, "note": null,
+      "statementFileName": "20261012_Beta_Industrial_LTDA_Statement.xlsx"
+    },
+    {
+      "customer": "Zeta Co",
+      "lines": [
+        { "type": "Invoice", "num": "62500", "date": "2026-08-20", "dueDate": "2026-10-07", "daysPastDue": 5, "openBalance": 100, "poNumber": "Z-9", "terms": "Net 45", "lotNumber": "" },
+        { "type": "Payment", "num": "PMT-7", "date": "2026-10-01", "dueDate": "2026-10-01", "daysPastDue": null, "openBalance": -250, "poNumber": "", "terms": "", "lotNumber": "" }
+      ],
+      "overdueTotal": 100, "creditTotal": -250, "netPastDue": -150,
+      "statement": false, "note": "Credits cover overdue balance - no statement",
+      "statementFileName": "20261012_Zeta_Co_Statement.xlsx"
+    }
+  ],
+  "internalFileName": "20261012_Overdue_Invoices.xlsx"
+}

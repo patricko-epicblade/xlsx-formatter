@@ -277,7 +277,15 @@ app.post('/format', upload.single('file'), async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Formatter running on port ${PORT}`);
-});
+// New JSON endpoints (own routers; JSON parsing is scoped inside them)
+app.use('/format/ar-overdue', require('./routes/arOverdue'));
+app.use('/format/statement', require('./routes/statement'));
+
+module.exports = app;
+
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Formatter running on port ${PORT}`);
+  });
+}
