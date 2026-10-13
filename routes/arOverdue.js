@@ -33,7 +33,17 @@ async function build(body) {
   const companyName = body.companyName || 'Customer';
   const asOfLabel = body.asOfLabel || '';
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('Overdue Invoices');
+  const sheet = workbook.addWorksheet('Overdue Invoices', {
+    pageSetup: {
+      orientation: 'landscape',
+      paperSize: 1,
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      margins: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+      printTitlesRow: '1:3',
+    },
+  });
 
   sheet.addRow([`Overdue Invoices - ${companyName}`]);
   sheet.addRow([`As of ${asOfLabel}`]);

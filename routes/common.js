@@ -31,9 +31,22 @@ function safeFileName(name, fallback) {
   return n.replace(/["\r\n\\/]/g, '_');
 }
 
+// RFC 6266 / 5987 header: ASCII fallback plus UTF-8 encoded filename*.
+function contentDisposition(name) {
+  let n = String(name);
+  if (typeof n.toWellFormed === 'function') n = n.toWellFormed(); // lone surrogates would make encodeURIComponent throw
+  const ascii = n
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7e]|["\\\/]/g, '_');
+  const encoded = encodeURIComponent(n).replace(
+    /['()*]/g, (ch) => '%' + ch.charCodeAt(0).toString(16).toUpperCase());
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
 function sendXlsx(res, buffer, fileName) {
   res.setHeader('Content-Type', XLSX_TYPE);
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.setHeader('Content-Disposition', contentDisposition(fileName));
   res.setHeader('Content-Length', buffer.length);
   res.end(buffer);
 }
@@ -80,5 +93,5 @@ function makeRouter(handler) {
 
 module.exports = {
   GREY_FILL, MONEY_FMT, DATE_FMT, isoToDate, styleHeaderRow, safeFileName,
-  validateLines, makeRouter,
+  validateLines, makeRouter, contentDisposition,
 };

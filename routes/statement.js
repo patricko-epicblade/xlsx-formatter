@@ -12,6 +12,21 @@ const HEADERS = [
 const WIDTHS = [14, 14, 14, 15, 16, 14, 14, 12];
 const GREY_ITALIC = { italic: true, color: { argb: 'FF808080' } };
 
+// Merge a text line across columns 1..lastCol, wrap it, and size the row to fit.
+// Column width units are roughly one character, so lines = ceil(chars / merged width).
+function wrappedLine(sheet, row, lastCol, text, font) {
+  const width = WIDTHS.slice(0, lastCol).reduce((a, b) => a + b, 0);
+  const str = String(text);
+  const lines = Math.max(1, Math.ceil(str.length / (width * 0.95)));
+  sheet.mergeCells(row, 1, row, lastCol);
+  const cell = sheet.getCell(row, 1);
+  cell.value = str;
+  if (font) cell.font = font;
+  cell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+  const r = sheet.getRow(row);
+  r.height = Math.max(r.height || 0, lines * 15 + (lines > 1 ? 2 : 0));
+}
+
 function validate(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'Body must be a JSON object';
   const h = body.header;
@@ -82,9 +97,8 @@ async function build(body) {
     row++;
   } else {
     for (const line of addressLines) {
-      sheet.mergeCells(row, 1, row, 4);
-      sheet.getCell(row, 1).value = String(line);
-      sheet.getCell(row, 1).alignment = { horizontal: 'left' };
+      // Row 2 shares the line with the "Date:" cell in E:H, so it can only span A:D.
+      wrappedLine(sheet, row, row === 2 ? 4 : ncol, line);
       row++;
     }
   }
@@ -143,7 +157,7 @@ async function build(body) {
     sheet.getCell(row, 1).font = GREY_ITALIC;
   } else {
     for (const line of remitToLines) {
-      sheet.getCell(row++, 1).value = String(line);
+      wrappedLine(sheet, row++, ncol, line);
     }
   }
 

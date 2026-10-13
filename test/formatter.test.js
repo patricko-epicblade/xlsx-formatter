@@ -75,7 +75,7 @@ test('POST /format/ar-overdue builds the internal report', async () => {
   assert.equal(sheet.rowCount, 13);
   assert.equal(sheet.getCell('A4').value, 'Acme Corp');
   assert.equal(sheet.getCell('A6').value, 'Acme Corp'); // customer name on credit line too
-  assert.equal(sheet.getCell('B4').value, '62892');
+  assert.equal(sheet.getCell('B4').value, '90001');
 
   // Subtotals
   assert.equal(sheet.getCell('A7').value, 'Total for Acme Corp');
@@ -118,6 +118,18 @@ test('POST /format/ar-overdue builds the internal report', async () => {
   assert.equal(sheet.views[0].state, 'frozen');
   assert.equal(sheet.views[0].ySplit, 3);
   assert.ok(sheet.autoFilter);
+
+  // Print setup
+  assert.equal(sheet.pageSetup.orientation, 'landscape');
+  assert.equal(sheet.pageSetup.fitToPage, true);
+  assert.equal(sheet.pageSetup.fitToWidth, 1);
+  assert.equal(sheet.pageSetup.fitToHeight, 0);
+  assert.equal(sheet.pageSetup.printTitlesRow, '1:3');
+  const m = sheet.pageSetup.margins;
+  assert.equal(m.left, 0.5);
+  assert.equal(m.right, 0.5);
+  assert.equal(m.top, 0.5);
+  assert.equal(m.bottom, 0.5);
 });
 
 test('POST /format/ar-overdue with no customers gives a single placeholder line', async () => {
@@ -170,7 +182,7 @@ test('POST /format/statement with empty address/remit shows placeholders', async
     });
 
   // 3 lines, no age colors
-  assert.equal(sheet.getCell('A8').value, '62892');
+  assert.equal(sheet.getCell('A8').value, '90001');
   assert.equal(sheet.getCell('E8').value, 1500.5);
   assert.equal(sheet.getCell('E10').value, -239.45);
   assert.equal(sheet.getCell('E10').numFmt, MONEY);
@@ -256,4 +268,56 @@ test('regression: POST /format still formats an uploaded xlsx', async () => {
   // Missing file still 400
   const bad = await fetch(base + '/format', { method: 'POST', body: new FormData() });
   assert.equal(bad.status, 400);
+});
+
+test('long remit-to and address lines wrap across A:H instead of clipping', async () => {
+  const longRemit = 'Remit by ACH to Example Bank, routing 000000000, account 000000000, ' + 'reference the invoice number. '.repeat(5);
+  const longAddr = '1234 Very Long Street Name Boulevard, Building 7, Suite 900, Some Extremely Long City Name, ST 00000-0000, Country';
+  const res = await postJson('/format/statement', {
+    asOfLabel: fixture.asOfLabel,
+    outputFileName: 's.xlsx',
+    header: { companyName: 'Co', addressLines: ['Short line', longAddr], remitToLines: [longRemit.slice(0, 200)] },
+    customer: fixture.customers[1],
+  });
+  assert.equal(res.status, 200);
+  const { sheet } = await loadSheet(res);
+  assert.equal(longRemit.slice(0, 200).length, 200);
+
+  let remitRow;
+  sheet.eachRow((r, n) => { if (String(r.getCell(1).value).startsWith('Remit by ACH')) remitRow = n; });
+  assert.ok(remitRow, 'remit line present');
+  const remit = sheet.getCell(remitRow, 1);
+  assert.equal(remit.value.length, 200);
+  assert.ok(remit.alignment.wrapText);
+  assert.equal(sheet.getCell(remitRow, 8).master.address, `A${remitRow}`, 'merged through H');
+  assert.ok(sheet.getRow(remitRow).height >= 30, "row tall enough for 2+ lines");
+
+  const addr = sheet.getCell('A3');
+  assert.equal(addr.value, longAddr);
+  assert.ok(addr.alignment.wrapText);
+  assert.equal(sheet.getCell('H3').master.address, 'A3');
+  assert.ok(sheet.getRow(3).height >= 30);
+});
+
+test('Content-Disposition is safe for non-Latin-1 file names', async () => {
+  const names = ['Café Ltda Statement.xlsx', 'O’Neil.xlsx', '日本語の請求書.xlsx', '😀 Statement.xlsx'];
+  for (const name of names) {
+    const res = await postJson('/format/statement', {
+      asOfLabel: fixture.asOfLabel,
+      outputFileName: name,
+      header: { companyName: 'Co', addressLines: [], remitToLines: [] },
+      customer: fixture.customers[1],
+    });
+    assert.equal(res.status, 200, name);
+    const cd = res.headers.get('content-disposition');
+    const m = /^attachment; filename="([^"\/]*)"; filename\*=UTF-8''([A-Za-z0-9%._~-]+)$/.exec(cd);
+    assert.ok(m, `header parses for ${name}: ${cd}`);
+    assert.match(m[1], /^[ -~]*$/);
+    assert.equal(decodeURIComponent(m[2]), name);
+  }
+  const res = await postJson('/format/ar-overdue', {
+    companyName: 'X', asOfLabel: 'a', outputFileName: '日本.xlsx', customers: [],
+  });
+  assert.equal(res.status, 200);
+  assert.ok(res.headers.get('content-disposition').endsWith("filename*=UTF-8''%E6%97%A5%E6%9C%AC.xlsx"));
 });
