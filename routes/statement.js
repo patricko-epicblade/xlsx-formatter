@@ -67,8 +67,9 @@ async function build(body) {
   sheet.mergeCells(1, 1, 1, 4);
   if (hasLogo) {
     const imageId = workbook.addImage({ filename: LOGO_PATH, extension: 'png' });
-    sheet.addImage(imageId, { tl: { col: 0.1, row: 0.1 }, ext: { width: 180, height: 60 } });
-    sheet.getRow(1).height = 48;
+    // Epic Blade logo is ~2.3:1 (assets/logo.png, 640x278); keep that ratio so it isn't squashed.
+    sheet.addImage(imageId, { tl: { col: 0.1, row: 0.1 }, ext: { width: 172, height: 75 } });
+    sheet.getRow(1).height = 60;
   } else {
     const c = sheet.getCell(1, 1);
     c.value = header.companyName || '';

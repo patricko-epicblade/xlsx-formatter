@@ -160,10 +160,19 @@ test('POST /format/statement with empty address/remit shows placeholders', async
   assert.equal(sheet.pageSetup.fitToWidth, 1);
   assert.equal(sheet.pageSetup.fitToPage, true);
 
-  // No logo file in the repo, so the company name is used
-  assert.equal(sheet.getCell('A1').value, fixture.companyName);
-  assert.equal(sheet.getCell('A1').font.size, 18);
-  assert.equal(sheet.getCell('A1').font.bold, true);
+  // assets/logo.png exists, so the logo image is placed top-left (keeping its ~2.3:1 ratio);
+  // without it, the company name is written in bold 18pt instead.
+  const images = sheet.getImages();
+  if (fs.existsSync(path.join(__dirname, '..', 'assets', 'logo.png'))) {
+    assert.equal(images.length, 1);
+    assert.equal(images[0].range.tl.nativeCol, 0);
+    assert.equal(images[0].range.tl.nativeRow, 0);
+  } else {
+    assert.equal(images.length, 0);
+    assert.equal(sheet.getCell('A1').value, fixture.companyName);
+    assert.equal(sheet.getCell('A1').font.size, 18);
+    assert.equal(sheet.getCell('A1').font.bold, true);
+  }
   assert.equal(sheet.getCell('E1').value, 'STATEMENT');
   assert.equal(sheet.getCell('E1').font.size, 20);
   assert.equal(sheet.getCell('E2').value, 'Date: October 12, 2026');
