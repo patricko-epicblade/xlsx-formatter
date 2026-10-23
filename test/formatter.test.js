@@ -330,3 +330,100 @@ test('Content-Disposition is safe for non-Latin-1 file names', async () => {
   assert.equal(res.status, 200);
   assert.ok(res.headers.get('content-disposition').endsWith("filename*=UTF-8''%E6%97%A5%E6%9C%AC.xlsx"));
 });
+
+// ---- /format/closed-fa ----
+const closedFa = JSON.parse(fs.readFileSync(path.join(__dirname, 'closed-fa-fixture.json'), 'utf8'));
+const CLOSED_FA_EXAMPLE_DIR = 'C:\\Users\\aweso\\Documents\\Epic Blade\\automations\\03-closed-fa\\04-build\\formatter-test';
+
+test('POST /format/closed-fa builds the report', async () => {
+  const res = await postJson('/format/closed-fa', closedFa);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-disposition'), /filename="20261022_Closed_FA_Report\.xlsx"/);
+  const { sheet, buf } = await loadSheet(res);
+  if (fs.existsSync(CLOSED_FA_EXAMPLE_DIR)) {
+    fs.writeFileSync(path.join(CLOSED_FA_EXAMPLE_DIR, 'closed-fa-example.xlsx'), buf);
+  }
+
+  assert.equal(sheet.name, 'Closed FA');
+  assert.equal(sheet.getCell('A1').value, 'Closed FA (First Article) Report - Test Company, LLC');
+  assert.equal(sheet.getCell('A1').font.bold, true);
+  assert.equal(sheet.getCell('A1').font.size, 16);
+  assert.equal(sheet.getCell('A2').value, 'As of October 22, 2026');
+  assert.equal(sheet.getCell('A2').font.italic, true);
+  const headers = ['Customer', 'FA #', 'Lot #', 'Description', 'Amount', 'Ordered', 'Shipped', 'Status', 'Outcome'];
+  headers.forEach((h, i) => {
+    const c = sheet.getCell(3, i + 1);
+    assert.equal(c.value, h);
+    assert.equal(c.font.bold, true);
+    assert.equal(fillOf(c), 'FFBFBFBF');
+  });
+  assert.equal(sheet.rowCount, 3 + closedFa.rows.length);
+
+  // Amount + real date
+  const amt = sheet.getCell('E4');
+  assert.equal(amt.value, 12345.6);
+  assert.equal(amt.numFmt, '$#,##0.00');
+  const ordered = sheet.getCell('F4');
+  assert.ok(ordered.value instanceof Date);
+  assert.equal(ordered.value.toISOString().slice(0, 10), '2026-03-15');
+  assert.equal(ordered.numFmt, 'mm/dd/yyyy');
+
+  // Description wrap, multi-line, top aligned; shipped with 3 dates and empty
+  const desc = sheet.getCell('D4');
+  assert.equal(desc.value, 'Test Widget Trial\nSecond line of notes\nThird line');
+  assert.equal(desc.alignment.wrapText, true);
+  assert.equal(desc.alignment.vertical, 'top');
+  assert.equal(sheet.getCell('G4').value, '04/01/2026, 04/15/2026, 05/02/2026');
+  assert.equal(sheet.getCell('G4').alignment.wrapText, true);
+  assert.ok(!sheet.getCell('G6').value);
+  assert.ok(sheet.getColumn(4).width >= 45);
+
+  // Remake fill across the row, and only there
+  for (let n = 1; n <= 9; n++) assert.equal(fillOf(sheet.getCell(5, n)), 'FFF2F2F2');
+  assert.notEqual(fillOf(sheet.getCell('A4')), 'FFF2F2F2');
+  assert.notEqual(fillOf(sheet.getCell('A6')), 'FFF2F2F2');
+
+  // Customer divider: first row of Beta has a top border, a middle Acme row does not
+  assert.equal(sheet.getCell('A7').border.top.style, 'thin');
+  assert.equal(sheet.getCell('B7').border.top.style, 'thin');
+  assert.ok(!(sheet.getCell('A6').border && sheet.getCell('A6').border.top));
+
+  // Freeze / autofilter / print setup
+  assert.equal(sheet.views[0].state, 'frozen');
+  assert.equal(sheet.views[0].ySplit, 3);
+  assert.equal(String(sheet.autoFilter), 'A3:I3');
+  assert.equal(sheet.pageSetup.orientation, 'landscape');
+  assert.equal(sheet.pageSetup.fitToWidth, 1);
+  assert.equal(sheet.pageSetup.fitToHeight, 0);
+  assert.equal(sheet.pageSetup.printTitlesRow, '1:3');
+  assert.equal(sheet.pageSetup.margins.left, 0.5);
+});
+
+test('POST /format/closed-fa with no rows shows a placeholder', async () => {
+  const res = await postJson('/format/closed-fa', { companyName: 'X', asOfLabel: 'a', rows: [] });
+  assert.equal(res.status, 200);
+  const { sheet } = await loadSheet(res);
+  assert.equal(sheet.getCell('A3').value, 'Customer');
+  assert.equal(sheet.getCell('A4').value, 'No FA trials found');
+  assert.equal(sheet.rowCount, 4);
+});
+
+test('POST /format/closed-fa rejects bad bodies with 400', async () => {
+  const good = closedFa.rows[0];
+  const bads = [
+    '{not json',
+    JSON.stringify([]),
+    JSON.stringify({}),
+    JSON.stringify({ rows: 'x' }),
+    JSON.stringify({ rows: [null] }),
+    JSON.stringify({ rows: [{ ...good, customer: '' }] }),
+    JSON.stringify({ rows: [{ ...good, faNumber: undefined }] }),
+    JSON.stringify({ rows: [{ ...good, amount: '5' }] }),
+    JSON.stringify({ rows: [{ ...good, remake: 'no' }] }),
+    JSON.stringify({ rows: [{ ...good, description: 5 }] }),
+  ];
+  for (const raw of bads) {
+    const res = await postJson('/format/closed-fa', null, raw);
+    assert.equal(res.status, 400, raw);
+  }
+});

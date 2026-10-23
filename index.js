@@ -280,6 +280,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
 // New JSON endpoints (own routers; JSON parsing is scoped inside them)
 app.use('/format/ar-overdue', require('./routes/arOverdue'));
 app.use('/format/statement', require('./routes/statement'));
+app.use('/format/closed-fa', require('./routes/closedFa'));
 
 module.exports = app;
 

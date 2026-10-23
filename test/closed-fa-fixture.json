@@ -1,0 +1,19 @@
+{
+  "companyName": "Test Company, LLC",
+  "asOfLabel": "October 22, 2026",
+  "outputFileName": "20261022_Closed_FA_Report.xlsx",
+  "rows": [
+    { "customer": "Acme Corp", "faNumber": "90003FA", "estimateNum": "90003FA", "lot": "LOT-TEST-3",
+      "description": "Test Widget Trial\nSecond line of notes\nThird line", "amount": 12345.6, "ordered": "2026-03-15",
+      "shipped": "04/01/2026, 04/15/2026, 05/02/2026", "shippedCount": 3, "status": "Converted", "outcome": "WON", "remake": false },
+    { "customer": "Acme Corp", "faNumber": "90003FAR", "estimateNum": "90003FAR", "lot": "LOT-TEST-3R",
+      "description": "Test Widget Remake", "amount": 500, "ordered": "2026-05-20",
+      "shipped": "06/01/2026", "shippedCount": 1, "status": "Accepted", "outcome": "Remake", "remake": true },
+    { "customer": "Acme Corp", "faNumber": "90001FA", "estimateNum": "90001FA", "lot": "LOT-TEST-1",
+      "description": "Older Test Trial", "amount": 1000, "ordered": "2025-01-10",
+      "shipped": "", "shippedCount": 0, "status": "Pending", "outcome": "", "remake": false },
+    { "customer": "Beta Industrial LTDA", "faNumber": "90002FA", "estimateNum": "90002FA", "lot": "LOT-TEST-2",
+      "description": "Test Gadget Trial", "amount": 2500.5, "ordered": "2026-02-01",
+      "shipped": "02/20/2026", "shippedCount": 1, "status": "Closed", "outcome": "Cancelled", "remake": false }
+  ]
+}
