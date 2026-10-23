@@ -6,8 +6,8 @@ const ExcelJS = require('exceljs');
 const app = require('../index');
 
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.json'), 'utf8'));
-// Human-readable example outputs (written only if this folder exists on the machine)
-const EXAMPLE_DIR = 'C:\\Users\\aweso\\Documents\\Epic Blade\\automations\\02-account-statement\\04-build\\formatter-test';
+// Human-readable example outputs: written only when FORMATTER_EXAMPLE_DIR is set to an existing folder
+const EXAMPLE_DIR = process.env.FORMATTER_EXAMPLE_DIR || '';
 
 let server;
 let base;
@@ -37,7 +37,7 @@ async function loadSheet(res) {
 }
 
 function saveExample(name, buf) {
-  if (fs.existsSync(EXAMPLE_DIR)) fs.writeFileSync(path.join(EXAMPLE_DIR, name), buf);
+  if (EXAMPLE_DIR && fs.existsSync(EXAMPLE_DIR)) fs.writeFileSync(path.join(EXAMPLE_DIR, name), buf);
 }
 
 const fillOf = (cell) => cell.fill && cell.fill.fgColor && cell.fill.fgColor.argb;
@@ -333,16 +333,13 @@ test('Content-Disposition is safe for non-Latin-1 file names', async () => {
 
 // ---- /format/closed-fa ----
 const closedFa = JSON.parse(fs.readFileSync(path.join(__dirname, 'closed-fa-fixture.json'), 'utf8'));
-const CLOSED_FA_EXAMPLE_DIR = 'C:\\Users\\aweso\\Documents\\Epic Blade\\automations\\03-closed-fa\\04-build\\formatter-test';
 
 test('POST /format/closed-fa builds the report', async () => {
   const res = await postJson('/format/closed-fa', closedFa);
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-disposition'), /filename="20261022_Closed_FA_Report\.xlsx"/);
   const { sheet, buf } = await loadSheet(res);
-  if (fs.existsSync(CLOSED_FA_EXAMPLE_DIR)) {
-    fs.writeFileSync(path.join(CLOSED_FA_EXAMPLE_DIR, 'closed-fa-example.xlsx'), buf);
-  }
+  saveExample('closed-fa-example.xlsx', buf);
 
   assert.equal(sheet.name, 'Closed FA');
   assert.equal(sheet.getCell('A1').value, 'Closed FA (First Article) Report - Test Company, LLC');
