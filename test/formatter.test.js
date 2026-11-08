@@ -424,3 +424,43 @@ test('POST /format/closed-fa rejects bad bodies with 400', async () => {
     assert.equal(res.status, 400, raw);
   }
 });
+
+test('POST /format/statement with totalDue lists not-yet-due lines as Current and shows two totals', async () => {
+  const res = await postJson('/format/statement', {
+    asOfLabel: 'November 1, 2026',
+    outputFileName: 'full.xlsx',
+    header: { companyName: 'Test Co', addressLines: ['1 Main St'], remitToLines: ['Pay by check'] },
+    customer: {
+      customer: 'Acme Corp',
+      totalDue: 250,
+      pastDue: 100,
+      lines: [
+        { type: 'Invoice', num: '1', date: '2026-08-01', dueDate: '2026-10-01', daysPastDue: 31, openBalance: 100 },
+        { type: 'Invoice', num: '2', date: '2026-10-01', dueDate: '2026-12-01', daysPastDue: null, current: true, openBalance: 300 },
+        { type: 'Credit Memo', num: 'C1', date: '2026-09-01', dueDate: '2026-09-01', daysPastDue: null, openBalance: -150 },
+      ],
+    },
+  });
+  assert.equal(res.status, 200);
+  const { sheet, buf } = await loadSheet(res);
+  saveExample('statement-full-example.xlsx', buf);
+  // header row 7, lines 8-10
+  assert.equal(sheet.getCell('D8').value, 31);
+  assert.equal(sheet.getCell('D9').value, 'Current');
+  assert.equal(sheet.getCell('D10').value, null); // credits have no age
+  assert.equal(sheet.getCell('A11').value, 'Total balance due');
+  assert.equal(sheet.getCell('E11').value, 250);
+  assert.equal(sheet.getCell('E11').border.top.style, 'thin');
+  assert.equal(sheet.getCell('A12').value, 'Past due');
+  assert.equal(sheet.getCell('E12').value, 100);
+  assert.equal(sheet.getCell('E12').numFmt, MONEY);
+  assert.equal(sheet.getCell('A12').font.bold, true);
+  assert.equal(sheet.getCell('A14').value, 'Remit to / how to pay:');
+});
+
+test('POST /format/statement with totalDue needs pastDue too', async () => {
+  const res = await postJson('/format/statement', {
+    header: {}, customer: { customer: 'A', totalDue: 5, lines: [] },
+  });
+  assert.equal(res.status, 400);
+});

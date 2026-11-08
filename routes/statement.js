@@ -37,7 +37,14 @@ function validate(body) {
   const c = body.customer;
   if (!c || typeof c !== 'object') return 'customer must be an object';
   if (typeof c.customer !== 'string' || !c.customer) return 'customer.customer must be a non-empty string';
-  if (typeof c.netPastDue !== 'number' || !isFinite(c.netPastDue)) return 'customer.netPastDue must be a number';
+  const num = (v) => typeof v === 'number' && isFinite(v);
+  if (c.totalDue !== undefined) {
+    // Full statement: all open invoices, with a total balance and the past-due part of it.
+    if (!num(c.totalDue)) return 'customer.totalDue must be a number';
+    if (!num(c.pastDue)) return 'customer.pastDue must be a number when totalDue is given';
+  } else if (!num(c.netPastDue)) {
+    return 'customer.netPastDue must be a number';
+  }
   return validateLines(c.lines, 'customer');
 }
 
@@ -123,7 +130,8 @@ async function build(body) {
       l.num == null ? '' : String(l.num),
       isoToDate(l.date),
       isoToDate(l.dueDate),
-      hasDays ? l.daysPastDue : null,
+      hasDays ? l.daysPastDue : l.current ? 'Current' : null, // current = open but not due yet
+
       l.openBalance,
       l.poNumber || '',
       l.terms || '',
@@ -139,15 +147,22 @@ async function build(body) {
     r.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
   }
 
-  const tot = sheet.getRow(row++);
-  tot.getCell(1).value = 'Total past due';
-  tot.getCell(5).value = cust.netPastDue;
-  tot.getCell(5).numFmt = MONEY_FMT;
-  tot.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
-  for (let n = 1; n <= ncol; n++) {
-    tot.getCell(n).font = { bold: true };
-    tot.getCell(n).border = { top: { style: 'thin' } };
-  }
+  // Totals: a full statement shows the whole balance and how much of it is past due;
+  // an overdue-only statement (no totalDue) keeps the single "Total past due" line.
+  const totals = typeof cust.totalDue === 'number'
+    ? [['Total balance due', cust.totalDue, true], ['Past due', cust.pastDue, false]]
+    : [['Total past due', cust.netPastDue, true]];
+  totals.forEach(([label, value, first]) => {
+    const tot = sheet.getRow(row++);
+    tot.getCell(1).value = label;
+    tot.getCell(5).value = value;
+    tot.getCell(5).numFmt = MONEY_FMT;
+    tot.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
+    for (let n = 1; n <= ncol; n++) {
+      tot.getCell(n).font = { bold: true };
+      if (first) tot.getCell(n).border = { top: { style: 'thin' } };
+    }
+  });
 
   row++; // blank
   sheet.getCell(row, 1).value = 'Remit to / how to pay:';
