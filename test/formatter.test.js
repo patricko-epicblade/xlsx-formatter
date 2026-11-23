@@ -190,25 +190,28 @@ test('POST /format/statement with empty address/remit shows placeholders', async
       assert.equal(fillOf(c), 'FFBFBFBF');
     });
 
-  // 3 lines, no age colors
+  // 2 invoice lines, a "Credits" subheading, then the labelled credit; no age colors
   assert.equal(sheet.getCell('A8').value, '90001');
   assert.equal(sheet.getCell('E8').value, 1500.5);
-  assert.equal(sheet.getCell('E10').value, -239.45);
-  assert.equal(sheet.getCell('E10').numFmt, MONEY);
+  assert.equal(sheet.getCell('A10').value, 'Credits');
+  assert.equal(sheet.getCell('A11').value, 'Credit Memo CM-101');
+  assert.equal(sheet.getCell('E11').value, -239.45);
+  assert.equal(sheet.getCell('E11').numFmt, MONEY);
   assert.ok(!fillOf(sheet.getCell('D8')), 'no age colors on statement');
   assert.ok(sheet.getCell('B8').value instanceof Date);
   assert.equal(sheet.getCell('B8').numFmt, 'mm/dd/yyyy');
 
-  assert.equal(sheet.getCell('A11').value, 'Total past due');
-  assert.equal(sheet.getCell('A11').font.bold, true);
-  assert.equal(sheet.getCell('E11').value, 3261.05);
-  assert.equal(sheet.getCell('E11').numFmt, MONEY);
-  assert.equal(sheet.getCell('E11').border.top.style, 'thin');
+  assert.equal(sheet.getCell('A12').value, 'Total past due as of October 12, 2026');
+  assert.equal(sheet.getCell('A12').font.bold, true);
+  assert.equal(sheet.getCell('E12').value, 3261.05);
+  assert.equal(sheet.getCell('E12').numFmt, MONEY);
+  assert.equal(sheet.getCell('E12').border.top.style, 'thin');
 
-  assert.equal(sheet.getCell('A13').value, 'Remit to / how to pay:');
-  assert.equal(sheet.getCell('A13').font.bold, true);
-  assert.equal(sheet.getCell('A14').value, '[payment instructions to come]');
-  assert.equal(sheet.getCell('A14').font.italic, true);
+  // No remit-to text: the section is left off, with no placeholder
+  const texts = [];
+  sheet.eachRow((r) => texts.push(String(r.getCell(1).value)));
+  assert.ok(!texts.includes('Remit to / how to pay:'));
+  assert.ok(!texts.includes('[payment instructions to come]'));
 });
 
 test('POST /format/statement renders provided address and remit lines', async () => {
@@ -444,18 +447,54 @@ test('POST /format/statement with totalDue lists not-yet-due lines as Current an
   assert.equal(res.status, 200);
   const { sheet, buf } = await loadSheet(res);
   saveExample('statement-full-example.xlsx', buf);
-  // header row 7, lines 8-10
+  // header row 7; overdue line 8, "Not yet due" 9, current line 10, "Credits" 11, credit 12
   assert.equal(sheet.getCell('D8').value, 31);
-  assert.equal(sheet.getCell('D9').value, 'Current');
-  assert.equal(sheet.getCell('D10').value, null); // credits have no age
-  assert.equal(sheet.getCell('A11').value, 'Total balance due');
-  assert.equal(sheet.getCell('E11').value, 250);
-  assert.equal(sheet.getCell('E11').border.top.style, 'thin');
-  assert.equal(sheet.getCell('A12').value, 'Past due');
-  assert.equal(sheet.getCell('E12').value, 100);
-  assert.equal(sheet.getCell('E12').numFmt, MONEY);
-  assert.equal(sheet.getCell('A12').font.bold, true);
-  assert.equal(sheet.getCell('A14').value, 'Remit to / how to pay:');
+  assert.equal(sheet.getCell('A9').value, 'Not yet due');
+  assert.equal(sheet.getCell('A9').font.italic, true);
+  assert.equal(sheet.getCell('D10').value, 'Current');
+  assert.equal(sheet.getCell('A11').value, 'Credits');
+  assert.equal(sheet.getCell('A12').value, 'Credit Memo C1');
+  assert.equal(sheet.getCell('D12').value, null); // credits have no age
+  assert.equal(sheet.getCell('A13').value, 'Total balance due as of November 1, 2026');
+  assert.equal(sheet.getCell('E13').value, 250);
+  assert.equal(sheet.getCell('E13').border.top.style, 'thin');
+  assert.equal(sheet.getCell('A14').value, 'Past due');
+  assert.equal(sheet.getCell('E14').value, 100);
+  assert.equal(sheet.getCell('E14').numFmt, MONEY);
+  assert.equal(sheet.getCell('A14').font.bold, true);
+  // 100 past due less the 150 credit floors at zero
+  assert.equal(sheet.getCell('A15').value, 'Past due after credits');
+  assert.equal(sheet.getCell('E15').value, 0);
+  assert.equal(sheet.getCell('A17').value, 'Remit to / how to pay:');
+});
+
+test('POST /format/statement: no "after credits" line without credits; a credit with no type or number says "Credit"', async () => {
+  const base = {
+    asOfLabel: 'November 1, 2026', outputFileName: 'x.xlsx', header: { companyName: 'Co' },
+  };
+  const lines = [
+    { type: 'Invoice', num: '1', date: '2026-08-01', dueDate: '2026-10-01', daysPastDue: 31, openBalance: 100 },
+  ];
+  let res = await postJson('/format/statement', { ...base, customer: { customer: 'A', totalDue: 100, pastDue: 100, lines } });
+  let { sheet } = await loadSheet(res);
+  let texts = [];
+  sheet.eachRow((r) => texts.push(String(r.getCell(1).value)));
+  assert.ok(!texts.includes('Past due after credits'));
+  assert.ok(!texts.includes('Not yet due') && !texts.includes('Credits'));
+
+  res = await postJson('/format/statement', {
+    ...base,
+    customer: { customer: 'A', totalDue: 60, pastDue: 60, lines: lines.concat([
+      { num: '', date: '2026-09-01', dueDate: '2026-09-01', daysPastDue: null, openBalance: -40 },
+    ]) },
+  });
+  ({ sheet } = await loadSheet(res));
+  texts = [];
+  sheet.eachRow((r) => texts.push(String(r.getCell(1).value)));
+  assert.ok(texts.includes('Credit'));
+  let afterRow;
+  sheet.eachRow((r, n) => { if (r.getCell(1).value === 'Past due after credits') afterRow = n; });
+  assert.equal(sheet.getCell(afterRow, 5).value, 20);
 });
 
 test('POST /format/statement with totalDue needs pastDue too', async () => {

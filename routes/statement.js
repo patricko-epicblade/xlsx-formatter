@@ -123,11 +123,33 @@ async function build(body) {
   styleHeaderRow(headerRow);
   row++;
 
+  // Subheading rows ("Not yet due", "Credits") between groups of lines (Patrick, 2026-11-22).
+  // Only shown when the statement also has past-due lines above them, so a group never sits alone
+  // under a heading.
+  const isCredit = (l) => typeof l.openBalance === 'number' && l.openBalance < 0;
+  const hasOverdue = cust.lines.some((l) => typeof l.daysPastDue === 'number');
+  const subheading = (text) => {
+    sheet.mergeCells(row, 1, row, ncol);
+    const c = sheet.getCell(row, 1);
+    c.value = text;
+    c.font = { bold: true, italic: true, color: { argb: 'FF595959' } };
+    row++;
+  };
+  let group = null;
   for (const l of cust.lines) {
-    const r = sheet.getRow(row++);
     const hasDays = typeof l.daysPastDue === 'number';
+    const lineGroup = isCredit(l) ? 'credit' : hasDays ? 'overdue' : 'current';
+    if (lineGroup !== group) {
+      if (lineGroup === 'current' && hasOverdue) subheading('Not yet due');
+      if (lineGroup === 'credit' && group !== null) subheading('Credits');
+      group = lineGroup;
+    }
+    const r = sheet.getRow(row++);
+    // Credit rows say what they are ("Credit Memo CM-9001", "Payment"), not a blank Invoice # cell.
+    const numText = l.num == null ? '' : String(l.num).trim();
+    const creditLabel = [String(l.type || '').trim() || 'Credit', numText].filter(Boolean).join(' ');
     const vals = [
-      l.num == null ? '' : String(l.num),
+      isCredit(l) ? creditLabel : numText,
       isoToDate(l.date),
       isoToDate(l.dueDate),
       hasDays ? l.daysPastDue : l.current ? 'Current' : null, // current = open but not due yet
@@ -149,9 +171,21 @@ async function build(body) {
 
   // Totals: a full statement shows the whole balance and how much of it is past due;
   // an overdue-only statement (no totalDue) keeps the single "Total past due" line.
-  const totals = typeof cust.totalDue === 'number'
-    ? [['Total balance due', cust.totalDue, true], ['Past due', cust.pastDue, false]]
-    : [['Total past due', cust.netPastDue, true]];
+  // The as-of date sits beside the total so a forwarded or printed statement still says which day
+  // it is for. "Past due after credits" is added when credits are on the account and change it.
+  const asOf = body.asOfLabel ? ` as of ${body.asOfLabel}` : '';
+  const cents = (v) => Math.round(v * 100);
+  const totals = [];
+  if (typeof cust.totalDue === 'number') {
+    totals.push([`Total balance due${asOf}`, cust.totalDue, true], ['Past due', cust.pastDue, false]);
+    const creditCents = cust.lines.filter(isCredit).reduce((s, l) => s + cents(l.openBalance), 0);
+    const afterCents = Math.max(0, cents(cust.pastDue) + creditCents);
+    if (creditCents !== 0 && afterCents !== cents(cust.pastDue)) {
+      totals.push(['Past due after credits', afterCents / 100, false]);
+    }
+  } else {
+    totals.push([`Total past due${asOf}`, cust.netPastDue, true]);
+  }
   totals.forEach(([label, value, first]) => {
     const tot = sheet.getRow(row++);
     tot.getCell(1).value = label;
@@ -164,14 +198,13 @@ async function build(body) {
     }
   });
 
-  row++; // blank
-  sheet.getCell(row, 1).value = 'Remit to / how to pay:';
-  sheet.getCell(row, 1).font = { bold: true };
-  row++;
-  if (remitToLines.length === 0) {
-    sheet.getCell(row, 1).value = '[payment instructions to come]';
-    sheet.getCell(row, 1).font = GREY_ITALIC;
-  } else {
+  // No remit-to text yet: leave the section off rather than print a placeholder (Patrick,
+  // 2026-11-22). validate.js stops statements going past Patrick until the text is set.
+  if (remitToLines.length > 0) {
+    row++; // blank
+    sheet.getCell(row, 1).value = 'Remit to / how to pay:';
+    sheet.getCell(row, 1).font = { bold: true };
+    row++;
     for (const line of remitToLines) {
       wrappedLine(sheet, row++, ncol, line);
     }
