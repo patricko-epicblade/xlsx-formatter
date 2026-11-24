@@ -281,6 +281,7 @@ app.post('/format', upload.single('file'), async (req, res) => {
 app.use('/format/ar-overdue', require('./routes/arOverdue'));
 app.use('/format/statement', require('./routes/statement'));
 app.use('/format/closed-fa', require('./routes/closedFa'));
+app.use('/read/closed-fa', require('./routes/closedFaPrevious'));
 
 module.exports = app;
 

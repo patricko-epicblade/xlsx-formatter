@@ -350,53 +350,138 @@ test('POST /format/closed-fa builds the report', async () => {
   assert.equal(sheet.getCell('A1').font.size, 16);
   assert.equal(sheet.getCell('A2').value, 'As of October 22, 2026');
   assert.equal(sheet.getCell('A2').font.italic, true);
-  const headers = ['Customer', 'FA #', 'Lot #', 'Description', 'Amount', 'Ordered', 'Shipped', 'Status', 'Outcome'];
+  const headers = ['Customer', 'FA #', 'Lot #', 'Description', 'Amount', 'Ordered', 'Shipped', 'Days to ship', 'Status', 'Outcome (e.g. CEB, Cancelled, Passed, Failed, Pending)', 'Note'];
   headers.forEach((h, i) => {
     const c = sheet.getCell(3, i + 1);
     assert.equal(c.value, h);
     assert.equal(c.font.bold, true);
     assert.equal(fillOf(c), 'FFBFBFBF');
   });
-  assert.equal(sheet.rowCount, 3 + closedFa.rows.length);
+  // 4 trials + one divider row per customer (Acme, Beta)
+  assert.equal(sheet.rowCount, 3 + closedFa.rows.length + 2);
 
-  // Amount + real date
-  const amt = sheet.getCell('E4');
+  // Customer divider rows carry the subtotals: Acme row 4 (3 trials), Beta row 8 (1 trial)
+  assert.equal(sheet.getCell('A4').value, 'Acme Corp');
+  assert.equal(sheet.getCell('B4').value, '3 trials');
+  assert.equal(sheet.getCell('E4').value, 13845.6);
+  assert.equal(sheet.getCell('E4').numFmt, '$#,##0.00');
+  assert.equal(sheet.getCell('A4').font.bold, true);
+  assert.equal(sheet.getCell('A4').border.top.style, 'thin');
+  assert.equal(sheet.getCell('K4').border.top.style, 'thin');
+  assert.equal(sheet.getCell('A8').value, 'Beta Industrial LTDA');
+  assert.equal(sheet.getCell('B8').value, '1 trial');
+  assert.equal(sheet.getCell('E8').value, 2500.5);
+
+  // Amount + real date (first trial is row 5)
+  const amt = sheet.getCell('E5');
   assert.equal(amt.value, 12345.6);
   assert.equal(amt.numFmt, '$#,##0.00');
-  const ordered = sheet.getCell('F4');
+  const ordered = sheet.getCell('F5');
   assert.ok(ordered.value instanceof Date);
   assert.equal(ordered.value.toISOString().slice(0, 10), '2026-03-15');
   assert.equal(ordered.numFmt, 'mm/dd/yyyy');
 
-  // Description wrap, multi-line, top aligned; shipped with 3 dates and empty
-  const desc = sheet.getCell('D4');
+  // Description wrap, multi-line, top aligned; shipped: several dates stay text, one date is a real date, none is blank
+  const desc = sheet.getCell('D5');
   assert.equal(desc.value, 'Test Widget Trial\nSecond line of notes\nThird line');
   assert.equal(desc.alignment.wrapText, true);
   assert.equal(desc.alignment.vertical, 'top');
-  assert.equal(sheet.getCell('G4').value, '04/01/2026, 04/15/2026, 05/02/2026');
-  assert.equal(sheet.getCell('G4').alignment.wrapText, true);
-  assert.ok(!sheet.getCell('G6').value);
+  assert.equal(sheet.getCell('G5').value, '04/01/2026, 04/15/2026, 05/02/2026');
+  assert.equal(sheet.getCell('G5').alignment.wrapText, true);
+  assert.ok(sheet.getCell('G6').value instanceof Date);
+  assert.equal(sheet.getCell('G6').value.toISOString().slice(0, 10), '2026-06-01');
+  assert.equal(sheet.getCell('G6').numFmt, 'mm/dd/yyyy');
+  assert.ok(sheet.getCell('G9').value instanceof Date);
+  assert.ok(!sheet.getCell('G7').value);
   assert.ok(sheet.getColumn(4).width >= 45);
 
-  // Remake fill across the row, and only there
-  for (let n = 1; n <= 9; n++) assert.equal(fillOf(sheet.getCell(5, n)), 'FFF2F2F2');
-  assert.notEqual(fillOf(sheet.getCell('A4')), 'FFF2F2F2');
-  assert.notEqual(fillOf(sheet.getCell('A6')), 'FFF2F2F2');
+  // Days to ship (number, blank when not shipped), Note, Outcome, Status
+  assert.equal(sheet.getCell('H5').value, 17);
+  assert.equal(sheet.getCell('H6').value, 12);
+  assert.ok(sheet.getCell('H7').value == null);
+  assert.equal(sheet.getCell('K7').value, 'Not shipped; call Bob');
+  assert.equal(sheet.getCell('K9').value, 'New since last report');
+  assert.equal(sheet.getCell('J5').value, 'WON');
+  assert.equal(sheet.getCell('I5').value, 'Converted');
 
-  // Customer divider: first row of Beta has a top border, a middle Acme row does not
-  assert.equal(sheet.getCell('A7').border.top.style, 'thin');
-  assert.equal(sheet.getCell('B7').border.top.style, 'thin');
-  assert.ok(!(sheet.getCell('A6').border && sheet.getCell('A6').border.top));
+  // Remake fill across the row, and only there (notes are not highlighted)
+  for (let n = 1; n <= 11; n++) assert.equal(fillOf(sheet.getCell(6, n)), 'FFF2F2F2');
+  assert.notEqual(fillOf(sheet.getCell('A5')), 'FFF2F2F2');
+  assert.notEqual(fillOf(sheet.getCell('A7')), 'FFF2F2F2');
+  assert.equal(fillOf(sheet.getCell('K7')), fillOf(sheet.getCell('A7')));
 
   // Freeze / autofilter / print setup
   assert.equal(sheet.views[0].state, 'frozen');
   assert.equal(sheet.views[0].ySplit, 3);
-  assert.equal(String(sheet.autoFilter), 'A3:I3');
+  assert.equal(String(sheet.autoFilter), 'A3:K3');
   assert.equal(sheet.pageSetup.orientation, 'landscape');
   assert.equal(sheet.pageSetup.fitToWidth, 1);
   assert.equal(sheet.pageSetup.fitToHeight, 0);
   assert.equal(sheet.pageSetup.printTitlesRow, '1:3');
   assert.equal(sheet.pageSetup.margins.left, 0.5);
+});
+
+test('POST /format/closed-fa: a remake of another customer sits in the original section and counts in its subtotal', async () => {
+  const rows = [
+    { ...closedFa.rows[0], shippedDates: [], shipped: '', daysToShip: null },
+    { ...closedFa.rows[1], customer: 'Zed Ltd', section: 'Acme Corp', amount: 100 },
+  ];
+  const { sheet } = await loadSheet(await postJson('/format/closed-fa', { ...closedFa, rows }));
+  assert.equal(sheet.rowCount, 3 + 1 + 2);
+  assert.equal(sheet.getCell('B4').value, '2 trials');
+  assert.equal(sheet.getCell('E4').value, 12445.6);
+  assert.equal(sheet.getCell('A6').value, 'Zed Ltd');
+  assert.ok(!sheet.getCell('G5').value);
+});
+
+test('POST /format/closed-fa works without the round-3 fields (old rows: shipped text, no note)', async () => {
+  const old = closedFa.rows.map(({ shippedDates, daysToShip, note, section, ...rest }) => rest);
+  const { sheet } = await loadSheet(await postJson('/format/closed-fa', { ...closedFa, rows: old }));
+  assert.equal(sheet.rowCount, 3 + 4 + 2);
+  assert.ok(sheet.getCell('G6').value instanceof Date); // a single "MM/DD/YYYY" text still becomes a date
+  assert.ok(sheet.getCell('H5').value == null);
+});
+
+const readPrev = (buf) => fetch(base + '/read/closed-fa', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buf });
+
+test('POST /read/closed-fa returns Customer, FA #, Outcome and Note of every trial, skipping divider rows', async () => {
+  const gen = await postJson('/format/closed-fa', closedFa);
+  const res = await readPrev(Buffer.from(await gen.arrayBuffer()));
+  assert.equal(res.status, 200);
+  const { rows } = await res.json();
+  assert.deepEqual(rows.map((r) => [r.customer, r.faNumber, r.outcome, r.note]), [
+    ['Acme Corp', '90003FA', 'WON', ''],
+    ['Acme Corp', '90003FAR', 'Remake', ''],
+    ['Acme Corp', '90001FA', '', 'Not shipped; call Bob'],
+    ['Beta Industrial LTDA', '90002FA', 'Cancelled', 'New since last report'],
+  ]);
+});
+
+test('POST /read/closed-fa reads a hand-edited report and an older report without a Note column', async () => {
+  const gen = await postJson('/format/closed-fa', closedFa);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(Buffer.from(await gen.arrayBuffer()));
+  const ws = wb.worksheets[0];
+  ws.getCell('J7').value = 'Won - reorder';
+  ws.getCell('K7').value = 'Not shipped; Bob says Friday';
+  let res = await readPrev(Buffer.from(await wb.xlsx.writeBuffer()));
+  let { rows } = await res.json();
+  assert.equal(rows[2].outcome, 'Won - reorder');
+  assert.equal(rows[2].note, 'Not shipped; Bob says Friday');
+  ws.spliceColumns(11, 1); // an old report has no Note column
+  res = await readPrev(Buffer.from(await wb.xlsx.writeBuffer()));
+  ({ rows } = await res.json());
+  assert.equal(rows.length, 4);
+  assert.equal(rows[2].note, '');
+  assert.equal(rows[2].outcome, 'Won - reorder');
+});
+
+test('POST /read/closed-fa rejects an empty body and a file that is not a report with 400', async () => {
+  assert.equal((await readPrev(Buffer.alloc(0))).status, 400);
+  assert.equal((await readPrev(Buffer.from('not an xlsx'))).status, 400);
+  const wb = new ExcelJS.Workbook();
+  wb.addWorksheet('Other').addRow(['a', 'b']);
+  assert.equal((await readPrev(Buffer.from(await wb.xlsx.writeBuffer()))).status, 400);
 });
 
 test('POST /format/closed-fa with no rows shows a placeholder', async () => {
@@ -421,6 +506,9 @@ test('POST /format/closed-fa rejects bad bodies with 400', async () => {
     JSON.stringify({ rows: [{ ...good, amount: '5' }] }),
     JSON.stringify({ rows: [{ ...good, remake: 'no' }] }),
     JSON.stringify({ rows: [{ ...good, description: 5 }] }),
+    JSON.stringify({ rows: [{ ...good, daysToShip: '5' }] }),
+    JSON.stringify({ rows: [{ ...good, shippedDates: '2026-01-01' }] }),
+    JSON.stringify({ rows: [{ ...good, note: 5 }] }),
   ];
   for (const raw of bads) {
     const res = await postJson('/format/closed-fa', null, raw);
@@ -502,4 +590,116 @@ test('POST /format/statement with totalDue needs pastDue too', async () => {
     header: {}, customer: { customer: 'A', totalDue: 5, lines: [] },
   });
   assert.equal(res.status, 400);
+});
+
+// ---- Closed FA, round 4 ----------------------------------------------------------------------
+test('closed-fa: summary line in row 2, Outcome dropdown that allows other text, off-list highlight rule', async () => {
+  const res = await postJson('/format/closed-fa', closedFa);
+  assert.equal(res.status, 200);
+  const { sheet } = await loadSheet(res);
+  const n = closedFa.rows.length;
+  assert.match(sheet.getCell('C2').value, new RegExp(`^${n} trials \| \d+ shipped \| \d+ not shipped`));
+  assert.equal(sheet.getCell('A2').value, 'As of October 22, 2026');
+  const dv = sheet.getCell('J5').dataValidation;
+  assert.equal(dv.type, 'list');
+  assert.equal(dv.formulae[0], '"CEB,Cancelled,Passed,Failed,Pending"');
+  assert.ok(!dv.showErrorMessage, 'typing other text must not be blocked');
+  const cf = sheet.conditionalFormattings.find((c) => /^J\d+:J\d+$/.test(c.ref));
+  assert.ok(cf, 'conditional formatting on the Outcome column');
+  assert.match(cf.rules[0].formulae[0], /J\d+="CEB".*J\d+="Pending"/);
+  assert.equal(cf.rules[0].style.fill.bgColor.argb, 'FFFFF2CC');
+});
+
+test('closed-fa: summary counts outcomes and median days; Not carried over sheet and count', async () => {
+  const { summaryLine } = require('../routes/closedFa');
+  const rows = [
+    { shipped: '01/02/2026', outcome: 'CEB', daysToShip: 10 }, { shipped: '01/02/2026', outcome: 'ceb', daysToShip: 30 },
+    { shipped: '', outcome: 'Cancelled', daysToShip: null }, { shipped: '', outcome: 'Whatever', daysToShip: null },
+  ];
+  assert.equal(summaryLine(rows, []), '4 trials | 2 shipped | 2 not shipped | 4 outcomes entered (2 CEB, 1 Cancelled, 1 other) | 0 open | median 20 days to ship');
+  assert.match(summaryLine(rows, [{}]), /\| 1 typed edit not carried over \(see sheet\)$/);
+  const res = await postJson('/format/closed-fa', { ...closedFa, notCarried: [{ faNumber: '50009FA', customer: 'Acme', outcome: 'Won', note: 'typed' }] });
+  assert.equal(res.status, 200);
+  const { wb, sheet } = await loadSheet(res);
+  assert.match(sheet.getCell('C2').value, /1 typed edit not carried over/);
+  const nc = wb.getWorksheet('Not carried over');
+  assert.deepEqual([1, 2, 3, 4].map((c) => nc.getCell(3, c).value), ['50009FA', 'Acme', 'Won', 'typed']);
+  const plain = await loadSheet(await postJson('/format/closed-fa', closedFa));
+  assert.equal(plain.wb.getWorksheet('Not carried over'), undefined);
+  assert.equal((await postJson('/format/closed-fa', { ...closedFa, notCarried: 'x' })).status, 400);
+});
+
+test('closed-fa: a remake showing the original ship date is red; the new header still reads back', async () => {
+  const rows = [
+    { customer: 'Acme', faNumber: '1FA', amount: 1, remake: false, ordered: '2026-03-01', shipped: '03/20/2026', shippedDates: ['2026-03-20'], daysToShip: 19 },
+    { customer: 'Acme', faNumber: '2FAR', amount: 1, remake: true, ordered: '2026-04-10', shipped: '03/20/2026', shippedDates: ['2026-03-20'], daysToShip: null, shippedFromOriginal: true },
+  ];
+  const res = await postJson('/format/closed-fa', { companyName: 'T', asOfLabel: 'x', rows });
+  const { sheet, buf } = await loadSheet(res);
+  assert.notEqual(sheet.getCell('G5').font.color && sheet.getCell('G5').font.color.argb, 'FFC00000');
+  assert.equal(sheet.getCell('G6').font.color.argb, 'FFC00000');
+  assert.equal(sheet.getCell('H6').value, null);
+  const { readPreviousReport } = require('../routes/closedFaPrevious');
+  assert.deepEqual((await readPreviousReport(buf)).map((r) => r.faNumber), ['1FA', '2FAR']);
+});
+
+// ---- Closed FA, round 5 ----------------------------------------------------------------------
+const cellsOf = (ref) => {
+  const m = /^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/.exec(ref);
+  return { c1: m[1], r1: +m[2], r2: +(m[4] || m[2]) };
+};
+const overlap = (a, b) => a.c1 === b.c1 && a.r1 <= b.r2 && b.r1 <= a.r2;
+
+test('closed-fa: Outcome validation and yellow rule cover data rows only, no overlaps, never an error alert', async () => {
+  const JSZip = require('jszip');
+  const res = await postJson('/format/closed-fa', closedFa);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const zip = await JSZip.loadAsync(buf);
+  const xml = await zip.file('xl/worksheets/sheet1.xml').async('string');
+  const { sheet } = await loadSheet(await postJson('/format/closed-fa', closedFa));
+  const dividers = new Set();
+  sheet.eachRow((r, n) => { if (n > 3 && r.getCell(2).value && /^\d+ trials?$/.test(String(r.getCell(2).value))) dividers.add(n); });
+  assert.ok(dividers.size > 0);
+  const dvs = [...xml.matchAll(/<dataValidation [^>]*>/g)].map((m) => m[0]);
+  assert.ok(dvs.length > 0);
+  const ranges = [];
+  for (const tag of dvs) {
+    assert.ok(!/showErrorMessage="(1|true)"/.test(tag), `error alert must never be on: ${tag}`);
+    for (const ref of /sqref="([^"]+)"/.exec(tag)[1].split(' ')) ranges.push(cellsOf(ref));
+  }
+  const cfs = [...xml.matchAll(/<conditionalFormatting sqref="([^"]+)"/g)].map((m) => cellsOf(m[1]));
+  assert.ok(cfs.length > 0);
+  for (const list of [ranges, cfs]) {
+    list.forEach((a, i) => {
+      assert.equal(a.c1, 'J');
+      for (let r = a.r1; r <= a.r2; r++) assert.ok(!dividers.has(r), `row ${r} is a divider row`);
+      list.forEach((b, j) => { if (i < j) assert.ok(!overlap(a, b), `overlapping ranges ${JSON.stringify(a)} ${JSON.stringify(b)}`); });
+    });
+  }
+  // every data row is covered by a validation
+  sheet.eachRow((r, n) => { if (n > 3 && !dividers.has(n) && r.getCell(1).value !== 'No FA trials found') assert.ok(ranges.some((a) => n >= a.r1 && n <= a.r2), `row ${n} lacks the dropdown`); });
+});
+
+test('closed-fa: many customers of varied sizes give exactly one non-overlapping Outcome validation per block', async () => {
+  const JSZip = require('jszip');
+  const sizes = [11, 1, 2, 45, 3, 1, 7];
+  const rows = [];
+  sizes.forEach((n, ci) => { for (let i = 0; i < n; i++) rows.push({ customer: `Cust ${ci}`, faNumber: `${ci}${i}FA`, amount: 1, remake: false, ordered: '2026-03-01', shipped: '', shippedDates: [] }); });
+  const res = await postJson('/format/closed-fa', { companyName: 'T', asOfLabel: 'x', rows });
+  const zip = await JSZip.loadAsync(Buffer.from(await res.arrayBuffer()));
+  const xml = await zip.file('xl/worksheets/sheet1.xml').async('string');
+  const refs = [...xml.matchAll(/<dataValidation [^>]*sqref="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(refs.length, sizes.length);
+  const rs = refs.map((r) => cellsOf(r));
+  rs.forEach((a, i) => rs.forEach((b, j) => { if (i < j) assert.ok(!overlap(a, b), `overlap ${refs[i]} ${refs[j]}`); }));
+  assert.ok(!/showErrorMessage/.test(xml));
+});
+
+test('closed-fa: summary shows entered vs open outcomes', () => {
+  const { summaryLine } = require('../routes/closedFa');
+  const rows = [
+    { shipped: '01/02/2026', outcome: 'CEB', daysToShip: 10 }, { shipped: '', outcome: 'Remake' }, { shipped: '', outcome: '' },
+    { shipped: '', outcome: 'Cancelled' },
+  ];
+  assert.equal(summaryLine(rows, []), '4 trials | 1 shipped | 3 not shipped | 2 outcomes entered (1 CEB, 1 Cancelled) | 2 open | median 10 days to ship');
 });
