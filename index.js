@@ -282,6 +282,7 @@ app.use('/format/ar-overdue', require('./routes/arOverdue'));
 app.use('/format/statement', require('./routes/statement'));
 app.use('/format/closed-fa', require('./routes/closedFa'));
 app.use('/read/closed-fa', require('./routes/closedFaPrevious'));
+app.use('/format/master-order', require('./routes/masterOrder'));
 app.use('/format/open-orders', require('./routes/openOrders'));
 app.use('/format/customer-list', require('./routes/customerList'));
 
