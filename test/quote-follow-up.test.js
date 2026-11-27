@@ -12,7 +12,7 @@ before(async () => {
 after(() => new Promise((resolve) => server.close(resolve)));
 
 const quote = (o = {}) => ({
-  rfq: 'R-1', company: 'Acme', contact: 'Cy', date: '2026-06-01', salesPerson: 'Sam', accountManager: 'Ann', status: 'Pending',
+  rfq: 'R-1', description: 'Straight blade (+1 more)', company: 'Acme', contact: 'Cy', date: '2026-06-01', salesPerson: 'Sam', accountManager: 'Ann', status: 'Pending',
   daysPending: 177, parts: 2, annualOpportunity: 1000, annualProfit: 400, ...o,
 });
 const line = (o = {}) => ({ rfq: 'R-1', part: 'P1', company: 'Acme', status: 'Pending', quantity: 10, price: 5, sellPrice: 10, vendorCost: 4, vendorChoice: 'V1', profitEach: 5, counted: true, ...o });
@@ -33,7 +33,7 @@ test('quote-follow-up: four tabs, summary above the table, house style, filter a
   const res = await post({
     companyName: 'Co', asOfLabel: 'November 25, 2026', outputFileName: 'x.xlsx', quotes: [quote()], summary: summary(), checks: ['one check'],
     lines: [line(), line({ counted: false })],
-    winRate: [{ contact: 'Pat', company: 'Acme', quotes: 3, won: 1, lost: 1, pending: 1, winPct: 0.5, pendingOpportunity: 1000 }],
+    winRate: [{ contact: 'Pat', company: 'Acme', quotes: 3, won: 1, lost: 1, pending: 1, winPct: 0.5, pendingOpportunity: 1000, wonOpportunity: 700 }],
   });
   assert.equal(res.status, 200);
   const wb = await load(res);
@@ -43,8 +43,10 @@ test('quote-follow-up: four tabs, summary above the table, house style, filter a
   assert.equal(q.views[0].ySplit, 9);
   assert.ok(q.autoFilter);
   assert.equal(q.getCell(10, 7).value, 'Pending');
-  assert.equal(q.getCell(10, 11).value, 1000);
-  assert.equal(q.getCell(9, 9).value, 'Age');
+  assert.equal(q.getCell(10, 9).value, 1000);
+  assert.equal(q.getCell(9, 2).value, 'Description');
+  assert.equal(q.getCell(10, 2).value, 'Straight blade (+1 more)');
+  assert.equal(q.getCell(9, 6).value, 'Account Manager');
   // summary block above the table
   assert.equal(q.getCell(6, 1).value, 'Pending');
   assert.equal(q.getCell(6, 3).value, 1000);
@@ -53,6 +55,8 @@ test('quote-follow-up: four tabs, summary above the table, house style, filter a
   const w = wb.getWorksheet('Win Rate');
   assert.equal(w.getCell(4, 1).value, 'Pat');
   assert.equal(w.getCell(4, 7).value, 0.5);
+  assert.equal(w.getCell(3, 9).value, 'Annual Opportunity Won');
+  assert.equal(w.getCell(4, 9).value, 700);
   const d = wb.getWorksheet('Part Detail');
   assert.equal(d.getCell(4, 11).value, 'Yes');
   assert.equal(d.getCell(5, 11).value, 'No');
@@ -66,8 +70,8 @@ test('quote-follow-up: left-out lines and date-ahead quotes are noted on the Quo
   const q = (await load(res)).getWorksheet('Quotes');
   assert.match(String(q.getCell(2, 1).value), /65 spreadsheet lines have no RFQ #/);
   assert.match(String(q.getCell(2, 1).value), /dated in the future/);
-  assert.equal(q.getCell(10, 8).value, null);
-  assert.equal(q.getCell(10, 9).value, 'Date ahead');
+  assert.equal(q.getCell(9, 9).value, 'Annual opportunity $');
+  assert.equal(q.getCell(9, 8).value, 'Parts');
 });
 
 test('quote-follow-up: empty quotes still produce a workbook', async () => {

@@ -10,7 +10,7 @@ const TOTAL_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7E6
 const ALT_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
 const money = (n) => Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
-const QUOTE_STRINGS = ['rfq', 'company', 'contact', 'date', 'salesPerson', 'accountManager', 'status', 'ageBand'];
+const QUOTE_STRINGS = ['rfq', 'description', 'company', 'contact', 'date', 'salesPerson', 'accountManager', 'status', 'ageBand'];
 const QUOTE_NUMBERS = ['parts', 'annualOpportunity', 'annualProfit'];
 const LINE_STRINGS = ['rfq', 'part', 'company', 'status', 'vendorChoice'];
 const LINE_NUMBERS = ['quantity', 'price', 'sellPrice', 'vendorCost', 'profitEach'];
@@ -91,15 +91,15 @@ async function build(body) {
 
   // ---- Quotes tab (first): status summary above the table, then one row per RFQ #
   const qCols = [
-    { h: 'RFQ #', w: 16 }, { h: 'Company', w: 28 }, { h: 'Customer', w: 24 }, { h: 'Date', w: 16 }, { h: 'Sales Person', w: 20 },
-    { h: 'Account Manager', w: 20 }, { h: 'Status', w: 11 }, { h: 'Days pending', w: 11, fmt: '#,##0' }, { h: 'Age', w: 11 }, { h: 'Parts', w: 8, fmt: '0' },
+    { h: 'RFQ #', w: 16 }, { h: 'Description', w: 38 }, { h: 'Company', w: 28 }, { h: 'Customer', w: 24 }, { h: 'Date', w: 16 },
+    { h: 'Account Manager', w: 20 }, { h: 'Status', w: 11 }, { h: 'Parts', w: 8, fmt: '0' },
     { h: 'Annual opportunity $', w: 20, fmt: AMOUNT_FMT }, { h: 'Annual profit $', w: 18, fmt: AMOUNT_FMT },
   ];
   const qs = workbook.addWorksheet('Quotes', { pageSetup: pageSetup(9) });
   const leftOut = typeof body.leftOut === 'number' && body.leftOut > 0
     ? ` | ${body.leftOut} spreadsheet ${body.leftOut === 1 ? 'line has' : 'lines have'} no RFQ # and ${body.leftOut === 1 ? 'is' : 'are'} not listed (see Notes)` : '';
   const ahead = typeof body.futureDated === 'number' && body.futureDated > 0
-    ? ` | ${body.futureDated} pending ${body.futureDated === 1 ? 'quote is' : 'quotes are'} dated in the future ("Date ahead"; probably a date typo)` : '';
+    ? ` | ${body.futureDated} pending ${body.futureDated === 1 ? 'quote is' : 'quotes are'} dated in the future (probably a date typo)` : '';
   title(qs, `Quote Follow-Up Report - ${companyName}`, `${sub} | ${body.quotes.length} ${body.quotes.length === 1 ? 'quote' : 'quotes'}, biggest annual opportunity first${leftOut}${ahead}`, qCols.length);
 
   // Summary block (rows 3-7), same grey header and total styling as the table below.
@@ -135,7 +135,7 @@ async function build(body) {
   total.annualProfit = Math.round(total.annualProfit * 100) / 100;
   sumRow(7, 'All quotes', total, true);
   const pend = body.summary.Pending;
-  qs.getCell(8, 1).value = `Follow up on the ${pend.count} pending ${pend.count === 1 ? 'quote' : 'quotes'}: ${money(pend.annualOpportunity)} of annual opportunity, ${money(pend.annualProfit)} annual profit. Filter Status = Pending and sort by Sales Person or Company.`;
+  qs.getCell(8, 1).value = `Follow up on the ${pend.count} pending ${pend.count === 1 ? 'quote' : 'quotes'}: ${money(pend.annualOpportunity)} of annual opportunity, ${money(pend.annualProfit)} annual profit. Filter Status = Pending and sort by Account Manager or Company.`;
   qs.mergeCells(8, 1, 8, qCols.length);
   qs.getCell(8, 1).alignment = { horizontal: 'left', vertical: 'middle' };
   qs.getCell(8, 1).font = { bold: true };
@@ -143,15 +143,15 @@ async function build(body) {
   table(qs, qCols, 9);
   if (body.quotes.length === 0) qs.addRow(['No quotes found']).font = { italic: true };
   for (const q of body.quotes) {
-    const r = qs.addRow([q.rfq, str(q.company), str(q.contact), isoToDate(q.date), str(q.salesPerson), str(q.accountManager), q.status,
-      num(q.daysPending), str(q.ageBand), q.parts, q.annualOpportunity, q.annualProfit]);
+    const r = qs.addRow([q.rfq, str(q.description), str(q.company), str(q.contact), isoToDate(q.date), str(q.accountManager), q.status,
+      q.parts, q.annualOpportunity, q.annualProfit]);
     qCols.forEach((c, i) => {
       const cell = r.getCell(i + 1);
       cell.alignment = { horizontal: c.fmt ? 'right' : 'left', vertical: 'middle' };
       if (c.fmt) cell.numFmt = c.fmt;
     });
-    r.getCell(4).numFmt = DATE_FMT;
-    r.getCell(4).alignment = { horizontal: 'center', vertical: 'middle' };
+    r.getCell(5).numFmt = DATE_FMT;
+    r.getCell(5).alignment = { horizontal: 'center', vertical: 'middle' };
   }
   if (body.quotes.length) {
     const first = 10;
@@ -160,11 +160,11 @@ async function build(body) {
     r.getCell(1).value = 'TOTAL (visible rows)';
     // SUBTOTAL(109) follows the filter, so the totals match what is on screen.
     r.getCell(7).value = { formula: `SUBTOTAL(103,A${first}:A${last})`, result: body.quotes.length };
-    r.getCell(10).value = { formula: `SUBTOTAL(109,J${first}:J${last})`, result: body.quotes.reduce((t, q) => t + q.parts, 0) };
-    r.getCell(11).value = { formula: `SUBTOTAL(109,K${first}:K${last})`, result: total.annualOpportunity };
-    r.getCell(12).value = { formula: `SUBTOTAL(109,L${first}:L${last})`, result: total.annualProfit };
-    r.getCell(11).numFmt = AMOUNT_FMT;
-    r.getCell(12).numFmt = AMOUNT_FMT;
+    r.getCell(8).value = { formula: `SUBTOTAL(109,H${first}:H${last})`, result: body.quotes.reduce((t, q) => t + q.parts, 0) };
+    r.getCell(9).value = { formula: `SUBTOTAL(109,I${first}:I${last})`, result: total.annualOpportunity };
+    r.getCell(10).value = { formula: `SUBTOTAL(109,J${first}:J${last})`, result: total.annualProfit };
+    r.getCell(9).numFmt = AMOUNT_FMT;
+    r.getCell(10).numFmt = AMOUNT_FMT;
     for (let n = 1; n <= qCols.length; n++) {
       r.getCell(n).font = { bold: true };
       r.getCell(n).fill = TOTAL_FILL;
@@ -175,13 +175,13 @@ async function build(body) {
   // ---- Win Rate tab: by the customer's sales person
   const wCols = [
     { h: "Customer's sales person", w: 28 }, { h: 'Company', w: 30 }, { h: 'Quotes', w: 10, fmt: '#,##0' }, { h: 'Won', w: 9, fmt: '#,##0' },
-    { h: 'Lost', w: 9, fmt: '#,##0' }, { h: 'Pending', w: 10, fmt: '#,##0' }, { h: 'Win %', w: 10, fmt: '0%' }, { h: 'Pending annual opportunity $', w: 26, fmt: AMOUNT_FMT },
+    { h: 'Lost', w: 9, fmt: '#,##0' }, { h: 'Pending', w: 10, fmt: '#,##0' }, { h: 'Win %', w: 10, fmt: '0%' }, { h: 'Pending annual opportunity $', w: 26, fmt: AMOUNT_FMT }, { h: 'Annual Opportunity Won', w: 24, fmt: AMOUNT_FMT },
   ];
   const wr = workbook.addWorksheet('Win Rate', { pageSetup: pageSetup(3) });
-  title(wr, `Win Rate - ${companyName}`, `${sub} | by the customer's sales person; Win % = Won / (Won + Lost), blank when nothing is decided yet`, wCols.length);
+  title(wr, `Win Rate - ${companyName}`, `${sub} | by the customer's sales person; Win % = Won / (Won + Lost), blank when nothing is decided yet | a quote with several customer people counts once for each of them`, wCols.length);
   table(wr, wCols, 3);
   for (const p of body.winRate || []) {
-    const r = wr.addRow([str(p.contact), str(p.company), p.quotes, p.won, p.lost, p.pending, num(p.winPct), p.pendingOpportunity]);
+    const r = wr.addRow([str(p.contact), str(p.company), p.quotes, p.won, p.lost, p.pending, num(p.winPct), p.pendingOpportunity, num(p.wonOpportunity) == null ? 0 : p.wonOpportunity]);
     wCols.forEach((c, i) => {
       const cell = r.getCell(i + 1);
       cell.alignment = { horizontal: c.fmt ? 'right' : 'left', vertical: 'middle' };
@@ -219,6 +219,9 @@ async function build(body) {
     'Status comes from the Status column of the quote spreadsheet and applies to the whole quote (every line with the same RFQ #). If any line is Won, the quote is Won. Otherwise, if any line is Lost, the quote is Lost. If every line is blank, it is Pending, counted from the day it was sent.',
     'Each part is counted once per quote: the Won line if there is one, otherwise the line with the largest annual quantity. The other price tiers and vendor quotes are listed in Part Detail as not counted.',
     "Annual opportunity is the sell price x annual quantity for each counted part (or the spreadsheet's own Annual Opportunity Size when filled in).",
+    'Description is the "Description or Epic Part Number" of the counted part with the biggest annual opportunity on that quote. If the quote has more parts, "(+N more)" is added; every part is listed in Part Detail.',
+    "Win Rate lists each customer person on their own line. A quote whose lines name several people is counted once for each person (so the Quotes column there can add up to more than the number of quotes); the dollars come from each person's own lines, so Annual Opportunity Won and Pending never double count.",
+    'The Date is the date typed on the quote lines in the spreadsheet (the earliest if the lines differ).',
     'RFQ numbers that differ by a suffix (-1, -2, -3) are separate quotes.',
   ];
   for (const t of [...notes, ...(body.checks || []).map((c) => `Check: ${c}`)]) {
